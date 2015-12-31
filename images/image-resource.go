@@ -1,19 +1,24 @@
 package images
 
+/*
 import (
-	""
+	"github.com/gin-gonic/gin"
 )
 
-type Image struct {
+type ImageResource struct {
+	cloudStorage *GoogleCloudStorageHandler
 }
 
-type ImageS3Handler struct {
+func (i *ImageResource) init() {
+	i.cloudStorage = createCloudStorageService()
 }
 
-func (i *ImageS3Handler) Register(container *restful.Container) {
-	ws := new(restful.WebService)
+func Register(imageGroup *gin.RouterGroup) {
+	imageGroup.GET("/listBucket")
+
 }
 
-func (i *ImageS3Handler) UploadObjectToS3(fileName string) {
-	
+func (i *ImageResource) UploadObjectToS3(fileName string) {
+	i.cloudStorage.listBucket()
 }
+*/
