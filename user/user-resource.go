@@ -28,11 +28,13 @@ import (
 //
 
 type User struct {
-	Id       string `json:"id"`
-	Username string `json:"name"  binding:"required"`
-	Email    string `json:"email" binding:"required"`
-	Image 	 string `json:"image" binding:"required"`
-	Password string `json:"password"`
+	Id        string `json:"id"`
+	Username  string `json:"username"  binding:"required"`
+	Firstname string `json:"firstName" binding:"required"`
+	Lastname  string `json:"lastName" binding:"required"`
+	Email     string `json:"email" binding:"required"`
+	Image     string `json:"image"`
+	Password  string `json:"password"`
 }
 
 type UserResource struct {
@@ -45,14 +47,14 @@ func (u User) String() string {
 }
 
 func NotAuthorized(c *gin.Context) {
-	c.Header("WWW-Authenticate", "Basic realm=Protected Area")
+	// c.Header("WWW-Authenticate", "Basic realm=Protected Area") if you uncomment this line a window with password & username pops up on client site
 	c.AbortWithStatus(401)
 }
 func isOptionsCorsRequest(c *gin.Context) bool {
 	ORIGIN_HEADER := "Origin"
 	OPTIONS_METHOD := "OPTIONS"
 
-	if c.Request.Method == OPTIONS_METHOD  {
+	if c.Request.Method == OPTIONS_METHOD {
 		if c.Request.Header.Get(ORIGIN_HEADER) != "" {
 			return true
 		}
@@ -95,16 +97,16 @@ func (u UserResource) basicAuthentication(c *gin.Context) {
 }
 
 func (u UserResource) Validate(email, password string) (bool, User) {
-	found, user := u.GetUserByEmail(email)
+	found, user := u.GetUserByEmailOrUsername(email)
 	if found && user.Password == password {
 		return true, user
 	}
 	return false, User{}
 }
 
-func (u UserResource) GetUserByEmail(email string) (bool, User) {
+func (u UserResource) GetUserByEmailOrUsername(email string) (bool, User) {
 	for _, user := range u.users {
-		if user.Email == email {
+		if user.Email == email || user.Username == email {
 			return true, user
 		}
 	}
@@ -116,7 +118,6 @@ func (u UserResource) Register(group *gin.RouterGroup) {
 	group.GET("login", u.login)
 	group.GET("find/:user-id", u.findUser)
 	group.PUT("update/:user-id", u.updateUser)
-	group.POST("create", u.createUser)
 	group.DELETE("remove/:user-id", u.removeUser)
 }
 
@@ -208,7 +209,7 @@ func RequestIdMiddleware() gin.HandlerFunc {
 
 func CorsHeader() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:63343")
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:63342")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "origin, content-type, accept, authorization")
@@ -257,13 +258,16 @@ func main() {
 
 	// "user db"
 	u := UserResource{map[string]User{}}
-	u.users["1"] = User{Id: "1", Username: "Simi", Image: "no profile image" , Email: "simi", Password: "pro"} // default user
+	u.users["1"] = User{Id: "1", Username: "Simi", Image: "no profile image", Email: "simi", Password: "pro" } // default user
 	// end user db
 
 	// url with "/user"
 	userGroup := router.Group("/user")
 	userGroup.Use(u.basicAuthentication)
 	u.Register(userGroup)
+
+	signupGroup := router.Group("/signup")
+	signupGroup.POST("", u.createUser)
 
 
 	//url images
