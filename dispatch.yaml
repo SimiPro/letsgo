@@ -1,0 +1,23 @@
+application: belongo
+# No version required; this does routing independent of version.
+
+dispatch:
+  # Default module serves the typical web resources and all static resources.
+  - url: "*/favicon.ico"
+    module: default
+
+  # Default module serves simple hostname request.
+  - url: "*/web/*"
+    module: default
+
+  # User
+  - url: "*/user/*"
+    module: user
+
+  # trip
+  - url: "*/trip/*"
+    module: trip
+
+  # Send all work to the one static backend.
+  #- url: "*/static/*"
+ #   module: static-backend

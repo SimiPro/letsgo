@@ -4,6 +4,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/satori/go.uuid"
 
+	"github.com/letsgoli/common"
+
 //	"github.com/letsgoli/images"
 
 	"encoding/base64"
@@ -14,6 +16,8 @@ import (
 	"strings"
 
 
+	"golang.org/x/net/context"
+	"google.golang.org/cloud/datastore"
 )
 
 // POST http://localhost:8080/users
@@ -26,91 +30,19 @@ import (
 //
 // DELETE http://localhost:8080/users/1
 //
-
-type User struct {
-	Id        string `json:"id"`
-	Username  string `json:"username"  binding:"required"`
-	Firstname string `json:"firstName" binding:"required"`
-	Lastname  string `json:"lastName" binding:"required"`
-	Email     string `json:"email" binding:"required"`
-	Image     string `json:"image"`
-	Password  string `json:"password"`
-}
-
 type UserResource struct {
 	// TODO: Use Dao
-	users map[string]User
+	users map[string]common.User
+	userDao UserDao
 }
 
-func (u User) String() string {
-	return fmt.Sprintf("Id: %s, Name: %s, Email: %s, Password: %s", u.Id, u.Username, u.Email, u.Image, u.Password)
-}
-
-func NotAuthorized(c *gin.Context) {
-	// c.Header("WWW-Authenticate", "Basic realm=Protected Area") if you uncomment this line a window with password & username pops up on client site
-	c.AbortWithStatus(401)
-}
-func isOptionsCorsRequest(c *gin.Context) bool {
-	ORIGIN_HEADER := "Origin"
-	OPTIONS_METHOD := "OPTIONS"
-
-	if c.Request.Method == OPTIONS_METHOD {
-		if c.Request.Header.Get(ORIGIN_HEADER) != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (u UserResource) basicAuthentication(c *gin.Context) {
-	if isOptionsCorsRequest(c) {
-		// check if "preflight" cors request if yes dont check authorization
-		// TODO: REMOVE IN PRODUCTION
-		c.Next()
-	} else {
-		authHeader := c.Request.Header.Get("Authorization")
-		if len(authHeader) == 0 {
-			NotAuthorized(c)
-			return
-		}
-		encoded := strings.SplitN(authHeader, " ", 2)
-
-		if len(encoded) != 2 || encoded[0] != "Basic" {
-			NotAuthorized(c)
-			return
-		}
-		payload, _ := base64.StdEncoding.DecodeString(encoded[1])
-		pair := strings.SplitN(string(payload), ":", 2)
-		if len(pair) != 2 || len(pair[0]) == 0 || len(pair[1]) == 0 {
-			NotAuthorized(c)
-			return
-		}
-		authOK, user := u.Validate(pair[0], pair[1])
-		if !authOK {
-			NotAuthorized(c)
-			return
-		}
-
-		c.Set("user", user)
-		c.Next()
-	}
-}
-
-func (u UserResource) Validate(email, password string) (bool, User) {
-	found, user := u.GetUserByEmailOrUsername(email)
-	if found && user.Password == password {
-		return true, user
-	}
-	return false, User{}
-}
-
-func (u UserResource) GetUserByEmailOrUsername(email string) (bool, User) {
+func (u UserResource) GetUserByEmailOrUsername(email string) (bool, common.User) {
 	for _, user := range u.users {
 		if user.Email == email || user.Username == email {
 			return true, user
 		}
 	}
-	return false, User{}
+	return false, common.User{}
 }
 
 func (u UserResource) Register(group *gin.RouterGroup) {
@@ -160,7 +92,7 @@ func (u UserResource) findUser(c *gin.Context) {
 // { "Id": "1", "Name": "Simi Pro"  }
 //
 func (u *UserResource) createUser(c *gin.Context) {
-	var usr User
+	var usr common.User
 	if err := c.BindJSON(&usr); err != nil {
 		Abort500WithError(c, err.Error())
 		return
@@ -179,7 +111,7 @@ func Abort500WithError(c *gin.Context, errorli string) {
 // { "Id": "1", "Name": "Simi Pro"  }
 //
 func (u *UserResource) updateUser(c *gin.Context) {
-	var user User
+	var user common.User
 	if err := c.BindJSON(&user); err != nil {
 		Abort500WithError(c, err.Error())
 		return
@@ -209,7 +141,7 @@ func RequestIdMiddleware() gin.HandlerFunc {
 
 func CorsHeader() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:63342")
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "https://holidayers-1180.appspot.com")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "origin, content-type, accept, authorization")
@@ -245,7 +177,10 @@ func respondWithError(code int, message string, c *gin.Context) {
 	c.AbortWithStatus(code)
 }
 
-func main() {
+func init() {
+	// init datastore
+	ctx := context.Background()
+	client := common.GetDatastore(ctx)
 
 	// Gin Middleware config
 	router := gin.New()
@@ -257,27 +192,31 @@ func main() {
 	// end gin middleware config
 
 	// "user db"
-	u := UserResource{map[string]User{}}
-	u.users["1"] = User{Id: "1", Username: "Simi", Image: "no profile image", Email: "simi", Password: "pro" } // default user
+	u := UserResource{
+		map[string]common.User{},
+		client,
+	}
+	u.users["1"] = common.User{Id: "1", Username: "Simi", Image: "no profile image", Email: "simi", Password: "pro" } // default user
 	// end user db
 
 	// url with "/user"
 	userGroup := router.Group("/user")
-	userGroup.Use(u.basicAuthentication)
+	userGroup.Use(common.BasicAuthentication(ctx, client))
 	u.Register(userGroup)
 
 	signupGroup := router.Group("/signup")
 	signupGroup.POST("", u.createUser)
 
-
 	//url images
 	imageGroup := router.Group("/image")
-	imageGroup.Use(u.basicAuthentication)
+	imageGroup.Use(common.BasicAuthentication(ctx, client))
 	//	images.Register(imageGroup)
 
 	// we bind to 3001 which is the proxy port of gin
-	log.Printf("start listening on localhost:3000 ")
-	router.Run(":8000")
+	//log.Printf("start listening on localhost:3000 ")
+	//router.Run(":8000")
+
+	http.Handle("/", router)
 
 	//server := &http.Server{Addr: ":3001", Handler: wsContainer}
 	//log.Fatal(server.ListenAndServe())

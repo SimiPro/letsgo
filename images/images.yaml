@@ -1,0 +1,6 @@
+application: letsgo
+module: images
+version: uno
+instance_class: B8
+manual_scaling:
+  instances: 1
