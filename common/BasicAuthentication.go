@@ -1,61 +1,68 @@
 package common
+
 import (
 	"strings"
 	"encoding/base64"
-	"github.com/gin-gonic/gin"
 	"log"
-	"google.golang.org/cloud/datastore"
 	"golang.org/x/net/context"
+	"google.golang.org/appengine/datastore"
+	"net/http"
+	"github.com/SimiPro/alice"
 )
 
-
-// Instances a Basic Authentication Middleware which checks auth with db and sets user on gin.Context with key "user"
-func BasicAuthentication(ctx context.Context, client datastore.Client) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.Request.Header.Get("Authorization")
-		if len(authHeader) == 0 {
-			NotAuthorized(c)
-			return
-		}
-		encoded := strings.SplitN(authHeader, " ", 2)
-
-		if len(encoded) != 2 || encoded[0] != "Basic" {
-			NotAuthorized(c)
-			return
-		}
-		payload, _ := base64.StdEncoding.DecodeString(encoded[1])
-		pair := strings.SplitN(string(payload), ":", 2)
-		if len(pair) != 2 || len(pair[0]) == 0 || len(pair[1]) == 0 {
-			NotAuthorized(c)
-			return
-		}
-		authOK, user := Validate(pair[0], pair[1], client, ctx)
-		if !authOK {
-			NotAuthorized(c)
-			return
-		}
-
-		c.Set("user", user)
-		c.Next()
-	}
+type BasicAuthentication struct {
+	next alice.ContextHandler
 }
 
-func Validate(email, password string, client datastore.Client, ctx context.Context) (bool, User) {
+func NewBasicAuthentication(next alice.ContextHandler) alice.ContextHandler {
+	return BasicAuthentication{next: next}
+}
+
+func (b BasicAuthentication) ServeHTTPContext(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+	// Instances a Basic Authentication Middleware which checks auth with db and sets user on gin.Context with key "user"
+	authHeader := r.Header.Get("Authorization")
+	if len(authHeader) == 0 {
+		NotAuthorized(w)
+		return
+	}
+	encoded := strings.SplitN(authHeader, " ", 2)
+	if len(encoded) != 2 || encoded[0] != "Basic" {
+		NotAuthorized(w)
+		return
+	}
+	payload, _ := base64.StdEncoding.DecodeString(encoded[1])
+	pair := strings.SplitN(string(payload), ":", 2)
+	log.Printf("1: %v, 2: %v", pair[0], pair[1])
+	if len(pair) != 2 || len(pair[0]) == 0 || len(pair[1]) == 0 {
+		NotAuthorized(w)
+		return
+	}
+	authOK, user := Validate(pair[0], pair[1], ctx)
+	if !authOK {
+		NotAuthorized(w)
+		return
+	}
+	//.Value(r, "user", user)
+	newContext := UserNewContext(ctx, &user)
+	b.next.ServeHTTPContext(newContext, w, r)
+}
+
+func Validate(email, password string, ctx context.Context) (bool, User) {
 	query := datastore.NewQuery("User").
-		Filter("Email =", email).
-		Filter("Password =", password).Order("-")
-	var users []User
+	Filter("Email =", email).
+	Filter("Password =", password)
 
-	if _, err := client.GetAll(ctx, query , &users); err != nil {
-		log.Fatalf("NOOOOO QUERY Not worked :(")
+	result := query.Run(ctx)
+	var user User
+	if _, err := result.Next(&user); err != nil {
+		log.Println("No User found")
+		return false, User{}
 	}
-	if (len(users) == 1) {
-		return true, users[0]
-	}
-	return false, User{}
+	log.Println("USER FOUND!")
+	return true, user
 }
 
-func NotAuthorized(c *gin.Context) {
+func NotAuthorized(w http.ResponseWriter) {
 	// c.Header("WWW-Authenticate", "Basic realm=Protected Area") if you uncomment this line a window with password & username pops up on client site
-	c.AbortWithStatus(401)
+	w.WriteHeader(401)
 }

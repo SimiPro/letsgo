@@ -1,19 +1,17 @@
 package daos
 import (
-	"google.golang.org/cloud/datastore"
 	"golang.org/x/net/context"
 	"github.com/letsgoli/common"
 	"log"
+"google.golang.org/appengine/datastore"
 )
 
 type UserDao struct {
-	client datastore.Client
 	ctx context.Context
 }
 
-func NewDao(_client datastore.Client, _ctx context.Context) {
+func NewUserDao( _ctx context.Context) *UserDao {
 	return &UserDao{
-		client: _client,
 		ctx: _ctx,
 	}
 }
@@ -21,20 +19,27 @@ func NewDao(_client datastore.Client, _ctx context.Context) {
 /**
 	Returns first User with this email
  */
-func (u *UserDao) GetUserByEmail(email string){
+func (u *UserDao) GetUserByEmail(email string) *common.User {
 	query := datastore.NewQuery("User").
 	Filter("Email =", email)
 
 	var users []common.User
-	if _, err := u.client.GetAll(u.ctx, query , &users); err != nil {
+
+	if _, err := query.GetAll(u.ctx, &users); err != nil {
 		log.Fatalf("NOOOOO QUERY Not worked :(")
 	}
 	if (len(users) == 1) {
-		return true, users[0]
+		return &users[0]
 	}
 	return nil
 }
 
-func (u *UserDao) AddUser(user common.User) {
-
+func (u *UserDao) AddUser(user *common.User) {
+	key := datastore.NewIncompleteKey(u.ctx, "User", nil)
+	log.Println("Key: %v", key)
+	if _, err := datastore.Put(u.ctx, key, user); err != nil {
+		log.Fatalf("Failed to insert User in db: %v" , err.Error())
+	} else {
+		log.Println("User inserted!")
+	}
 }

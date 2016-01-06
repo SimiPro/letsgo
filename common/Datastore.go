@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-func GetDatastore(ctx context.Context) datastore.Client {
+func GetDatastore(ctx context.Context) *datastore.Client {
 	client, err := datastore.NewClient(ctx, PROEJCT_ID)
 	if err != nil {
 		log.Fatalf("Failed to create datastore client: %v", client)
